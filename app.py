@@ -3,8 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.metrics import mean_squared_error, accuracy_score
 
 # Apply custom CSS (Optional, adjust "style.css" if you want custom styling)
 def local_css(file_name):
@@ -21,6 +21,9 @@ def load_data():
 
 data = load_data()
 
+# Add a 'Grade' column based on the Exam_Score threshold
+data['Grade'] = data['Exam_Score'].apply(lambda x: 'Pass' if x >= 65 else 'Fail')
+
 # Sidebar for navigation
 st.sidebar.title("Student Performance Prediction")
 page = st.sidebar.selectbox("Select a page", ["Home", "Data Visualization", "Prediction"])
@@ -28,10 +31,7 @@ page = st.sidebar.selectbox("Select a page", ["Home", "Data Visualization", "Pre
 # Home page
 if page == "Home":
     st.title("Welcome to the Student Performance Prediction App")
-    
-    # Load image from a local path (adjust path if needed)
-    st.image("image1.png", use_column_width=True)  
-    
+    st.image("image1.png", use_column_width=True)
     st.write(
         """
         This app predicts student performance based on various factors. 
@@ -45,98 +45,91 @@ elif page == "Data Visualization":
     st.title("Data Visualization")
     st.write("Select features to visualize their relationships with student performance.")
     
-    # Check for numeric columns and missing values
     if st.checkbox("Show Correlation Heatmap"):
         st.write("Correlation Heatmap of Features")
-        
-        # Select only numerical columns and handle missing values
         numeric_data = data.select_dtypes(include=['float64', 'int64']).dropna()
         
-        if numeric_data.empty:
-            st.write("No numerical data available for the heatmap.")
-        else:
+        if not numeric_data.empty:
             plt.figure(figsize=(10, 8))
             sns.heatmap(numeric_data.corr(), annot=True, cmap='coolwarm', fmt='.2f')
             st.pyplot(plt)
-            plt.clf()  # Clear the figure to avoid any overlap issues
+            plt.clf()
 
-    
-    # Selecting visualization type
     chart_type = st.selectbox("Select chart type", ["Histogram", "Scatter", "Box"])
 
-    # Generate histogram if selected
     if chart_type == "Histogram":
         feature = st.selectbox("Select feature for histogram", data.columns)
         plt.figure(figsize=(10, 6))
         sns.histplot(data[feature], kde=True, color='blue')
         st.pyplot(plt)
-    
-    # Scatter plot and box plot options
     else:
         x_var = st.selectbox("Select X-axis variable", data.columns)
         y_var = st.selectbox("Select Y-axis variable", data.columns)
-
+        
+        plt.figure(figsize=(10, 6))
         if chart_type == "Scatter":
-            plt.figure(figsize=(10, 6))
             sns.scatterplot(x=data[x_var], y=data[y_var])
         elif chart_type == "Box":
-            plt.figure(figsize=(10, 6))
             sns.boxplot(x=x_var, y=y_var, data=data)
-        
         st.pyplot(plt)
 
 # Prediction page
 elif page == "Prediction":
-    st.title("Predict Student Exam Score")
+    st.title("Predict Student Exam Score and Grade")
 
-    # Specific prediction features
     features = {
         "Hours_Studied": st.number_input("Enter Hours Studied per Week", min_value=0, max_value=50, step=1),
         "Attendance": st.number_input("Enter Attendance Percentage", min_value=0, max_value=100, step=1),
         "Previous_Scores": st.number_input("Enter Previous Scores (0-100)", min_value=0, max_value=100, step=1),
-        "Tutoring_Sessions": st.number_input("Enter Number of Tutoring Sessions per Week", min_value=0,max_value=6, step=1),
+        "Tutoring_Sessions": st.number_input("Enter Number of Tutoring Sessions per Week", min_value=0, max_value=6, step=1),
         "Sleep_Hours": st.number_input("Enter Average Sleep Hours per Night", min_value=0, max_value=15, step=1),
         "Physical_Activity": st.number_input("Enter Physical Activities per Week", min_value=0, max_value=5, step=1)
     }
     
-    # Convert input data into a DataFrame
     input_df = pd.DataFrame([features])
 
-    # Model training and prediction function
     @st.cache_resource
-    def train_model(X_train, y_train):
-        model = RandomForestRegressor(random_state=42)
-        model.fit(X_train, y_train)
-        return model
+    def train_regressor(X_train, y_train):
+        regressor = RandomForestRegressor(random_state=42)
+        regressor.fit(X_train, y_train)
+        return regressor
 
-    # Model training and prediction
+    @st.cache_resource
+    def train_classifier(X_train, y_train):
+        classifier = RandomForestClassifier(random_state=42)
+        classifier.fit(X_train, y_train)
+        return classifier
+
     if st.button("Predict"):
-        # Selecting features for model training and the target column
         X = data[["Hours_Studied", "Attendance", "Previous_Scores", 
                   "Tutoring_Sessions", "Sleep_Hours", "Physical_Activity"]]
-        y = data["Exam_Score"]  # Using 'Exam_Score' as the target column
+        y_score = data["Exam_Score"]
+        y_grade = data["Grade"]
 
-        # Split into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        X_train, X_test, y_score_train, y_score_test = train_test_split(X, y_score, test_size=0.2, random_state=42)
+        _, _, y_grade_train, y_grade_test = train_test_split(X, y_grade, test_size=0.2, random_state=42)
 
-        # Train and cache the model
-        model = train_model(X_train, y_train)
+        regressor = train_regressor(X_train, y_score_train)
+        classifier = train_classifier(X_train, y_grade_train)
 
-        # Prediction
-        prediction = model.predict(input_df)
-        st.write(f"Predicted Exam Score: {prediction[0]:.2f}")
+        predicted_score = regressor.predict(input_df)[0]
+        predicted_grade = classifier.predict(input_df)[0]
 
-        # Display model accuracy (using mean squared error as a metric)
-        y_pred = model.predict(X_test)
-        mse = mean_squared_error(y_test, y_pred)
-        st.write(f"Model Mean Squared Error: {mse:.2f}")
+        y_score_pred = regressor.predict(X_test)
+        y_grade_pred = classifier.predict(X_test)
 
-        # Feature importance
-        #st.write("Feature Importance")
-        #feature_importance = model.feature_importances_
-        #importance_df = pd.DataFrame({"Feature": X.columns, "Importance": feature_importance})
-        #importance_df = importance_df.sort_values(by="Importance", ascending=False)
+        mse = mean_squared_error(y_score_test, y_score_pred)
+        accuracy = accuracy_score(y_grade_test, y_grade_pred)
 
-        #plt.figure(figsize=(10, 6))
-        #sns.barplot(x="Importance", y="Feature", data=importance_df)
-        #st.pyplot(plt)
+        st.write(f"Model Mean Squared Error for Exam Score Prediction: {mse:.2f}")
+        st.write(f"Model Accuracy for Grade Prediction: {accuracy * 100:.2f}%")
+
+        st.write(f"Predicted Exam Score: {predicted_score:.2f}")
+
+        # Highlight Grade with color
+        if predicted_grade == 'Pass':
+            st.markdown(f"<h3 style='color: green;'>Predicted Grade: {predicted_grade}</h3>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<h3 style='color: red;'>Predicted Grade: {predicted_grade}</h3>", unsafe_allow_html=True)
+
+        
