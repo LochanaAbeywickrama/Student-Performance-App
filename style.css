@@ -49,12 +49,12 @@ h2, h3 {
 
 .stSelectbox label, .stNumberInput label {
     font-weight: bold;
-    color: #4CAF50;
+    color: #0805cb;
 }
 
 /* Styling for page titles */
 .stTitle {
-    color: #4CAF50;
+    color: #0805cb;
     text-align: center;
     font-weight: bold;
 }
